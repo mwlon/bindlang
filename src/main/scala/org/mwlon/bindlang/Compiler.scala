@@ -10,6 +10,6 @@ object Compiler {
     tokenStream.foreach(token => println(token))
     println("now...")
     val ast = Parser.parse(tokenStream)
-    println(ast.toLlvmIr)
+    println(ast.toBindlang)
   }
 }

@@ -109,8 +109,9 @@ object Lexer {
       val res = str match {
         case "if" => Tokens.If
         case "else" => Tokens.Else
-        case "class" => Tokens.Class
         case "while" => Tokens.While
+        case "for" => Tokens.For
+        case "bindable" => Tokens.Bindable
         case _ => Tokens.VarOrType(str)
       }
       Some(res)

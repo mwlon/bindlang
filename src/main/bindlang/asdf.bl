@@ -1,10 +1,14 @@
 
-a = (x, y,) {
+a = bindable (x, y) {
   z = 0
   while { z < x } {
     print(z, y,)
     z += 1
   }
+  q = z + ~z * ! !z + z
+  for (i, 10) {
+    print(i)
+  }
 }
 
-a(3, 5,)
+a(3, 5)

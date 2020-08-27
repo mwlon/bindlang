@@ -1,7 +1,7 @@
 package org.mwlon.bindlang
 
-import org.mwlon.bindlang.Asts.{AssignAst, Ast, ClosureAst, ConstantAst, FunctionCallAst, FunctionDefAst, GlobalAst, UnaryBinaryAst, UnaryOpAst, VarAst, WhileAst}
-import org.mwlon.bindlang.Tokens.{BinaryOp, CharToken, Token, TypedToken, UnaryOp, VarOrType, While}
+import org.mwlon.bindlang.SimpleAsts._
+import org.mwlon.bindlang.Tokens._
 
 import scala.collection.immutable.LazyList.#::
 import scala.collection.mutable.ArrayBuffer
@@ -9,8 +9,9 @@ import scala.collection.mutable.ArrayBuffer
 /*
 Ops: Array[Op]  //global parsing starts here
 Closure: { + Ops + }
-Function Def: ( + Array[var + ,] + ) + Closure
+Function Def: [bindable] + ( + Array[var + ,] + ) + Closure
 While: while + Closure + Closure
+For: for + ( + loopvar + , + n + ) + Closure
 If: if + Closure + Closure [+ else + Closure]
 Op
   Assign: Var + = + Expression
@@ -29,12 +30,12 @@ Unary
  */
 
 object Parser {
-  case class ParseResult(
+  case class ParseResult[+T <: SimpleAst](
     rest: LazyList[Token],
-    ast: Ast
+    ast: T
   )
 
-  def parse(tokens: LazyList[Token]): Ast = {
+  def parse(tokens: LazyList[Token]): SimpleAst = {
     val result = parseOps(tokens)
     assert(result.rest.isEmpty, s"training tokens: ${result.rest.toArray.mkString(" ")}")
     GlobalAst(result.ast.children)
@@ -47,10 +48,9 @@ object Parser {
     }
   }
 
-  private def parseOps(tokens: LazyList[Token]): ParseResult = {
-
+  private def parseOps(tokens: LazyList[Token]): ParseResult[ClosureAst] = {
     var rest = tokens
-    val res = ArrayBuffer.empty[Ast]
+    val res = ArrayBuffer.empty[SimpleAst]
     var good = true
     while (good) {
       val opResult = parseOp(rest)
@@ -68,11 +68,11 @@ object Parser {
     )
   }
 
-  private def parseOp(tokens: LazyList[Token]): Option[ParseResult] = {
-    parseAlternatives(tokens, Array(parseAssign, parseWhile, parseExpression))
+  private def parseOp(tokens: LazyList[Token]): Option[ParseResult[SimpleAst]] = {
+    parseAlternatives(tokens, Seq(parseAssign, parseWhile, parseFor, parseExpression))
   }
 
-  private def parseAssign(tokens: LazyList[Token]): Option[ParseResult] = {
+  private def parseAssign(tokens: LazyList[Token]): Option[ParseResult[AssignAst]] = {
     tokens match {
       case head #:: CharToken('=') #:: rest =>
         head match {
@@ -88,7 +88,7 @@ object Parser {
     }
   }
 
-  private def parseWhile(tokens: LazyList[Token]): Option[ParseResult] = {
+  private def parseWhile(tokens: LazyList[Token]): Option[ParseResult[WhileAst]] = {
     trimExactToken(tokens, While).map(theRest => {
       var rest = theRest
       val conditionParseResult = parseClosure(rest)
@@ -99,11 +99,39 @@ object Parser {
     })
   }
 
-  private def parseExpression(tokens: LazyList[Token]): Option[ParseResult] = {
-    parseAlternatives(tokens, Array(parseFunctionDef, parseUnaryBinary))
+  private def parseFor(tokens: LazyList[Token]): Option[ParseResult[ForAst]] = {
+    trimExactToken(tokens, For).map(theRest => {
+      var rest = theRest
+      rest = trimExactToken(rest, CharToken('(')).get
+      val varName = rest match {
+        case VarOrType(x) #:: rest2 =>
+          rest = rest2
+          x
+        case _ => throw new Error("expected for loop variable as first arg")
+      }
+      rest = trimExactToken(rest, CharToken(',')).get
+      val countResult = parseExpression(rest).get
+      rest = countResult.rest
+      rest = trimExactToken(rest, CharToken(')')).get
+      val effectParseResult = parseClosure(rest)
+      rest = effectParseResult.rest
+      ParseResult(rest, ForAst(varName, countResult.ast, effectParseResult.ast))
+    })
   }
 
-  def parseFunctionDef(tokens: LazyList[Token]): Option[ParseResult] = {
+  private def parseExpression(tokens: LazyList[Token]): Option[ParseResult[SimpleAst]] = {
+    parseAlternatives(tokens, Seq(parseBindable, parseFunctionDef, parseUnaryBinary))
+  }
+
+  def parseBindable(tokens: LazyList[Token]): Option[ParseResult[FunctionDefAst]] = {
+    trimExactToken(tokens, Bindable).map(rest => {
+      val functionResult = parseFunctionDef(rest).get
+      functionResult.ast.markBindable()
+      functionResult
+    })
+  }
+
+  def parseFunctionDef(tokens: LazyList[Token]): Option[ParseResult[FunctionDefAst]] = {
     trimExactToken(tokens, CharToken('(')).map(theRest => {
       var rest = theRest
       var good = true
@@ -126,7 +154,7 @@ object Parser {
     })
   }
 
-  def parseUnaryBinary(tokens: LazyList[Token]): Option[ParseResult] = {
+  def parseUnaryBinary(tokens: LazyList[Token]): Option[ParseResult[SimpleAst]] = {
     parseUnary(tokens).map(firstUnaryResult => {
       var rest = firstUnaryResult.rest
 
@@ -146,21 +174,19 @@ object Parser {
 
       ParseResult(
         rest,
-        UnaryBinaryAst.from(unaries.toArray, binaryOps.toArray)
+        BinaryAst.from(unaries.toArray, binaryOps.toArray)
       )
     })
   }
 
-  private def parseUnary(tokens: LazyList[Token]): Option[ParseResult] = {
-
+  private def parseUnary(tokens: LazyList[Token]): Option[ParseResult[SimpleAst]] = {
     parseAlternatives(
       tokens,
-      Array(wrappedUnaryBinary, functionCall, unaryOpUnary, varUnary, constantUnary)
+      Seq(wrappedUnaryBinary, functionCall, unaryOpUnary, varUnary, constantUnary)
     )
   }
 
-  private def wrappedUnaryBinary(tokens: LazyList[Token]): Option[ParseResult] = {
-
+  private def wrappedUnaryBinary(tokens: LazyList[Token]): Option[ParseResult[SimpleAst]] = {
     trimExactToken(tokens, CharToken('(')).map(theRest => {
       var rest = theRest
       val result = parseExpression(tokens).get
@@ -169,13 +195,12 @@ object Parser {
     })
   }
 
-  def functionCall(tokens: LazyList[Token]): Option[ParseResult] = {
-
+  def functionCall(tokens: LazyList[Token]): Option[ParseResult[FunctionCallAst]] = {
     tokens match {
       case VarOrType(name) #:: _ =>
         trimExactToken(tokens.tail, CharToken('(')).map(theRest => {
           var rest = theRest
-          val args = ArrayBuffer.empty[Ast]
+          val args = ArrayBuffer.empty[SimpleAst]
           var good = true
           while (good) {
             val argResult = parseExpression(rest)
@@ -208,8 +233,7 @@ object Parser {
     }
   }
 
-  private def unaryOpUnary(tokens: LazyList[Token]): Option[ParseResult] = {
-
+  private def unaryOpUnary(tokens: LazyList[Token]): Option[ParseResult[UnaryOpAst]] = {
     tokens match {
       case UnaryOp(name) #:: _ =>
         val term = parseUnary(tokens.tail).get
@@ -221,8 +245,7 @@ object Parser {
     }
   }
 
-  private def varUnary(tokens: LazyList[Token]): Option[ParseResult] = {
-
+  private def varUnary(tokens: LazyList[Token]): Option[ParseResult[VarAst]] = {
     tokens match {
       case VarOrType(name) #:: _ =>
         Some(ParseResult(
@@ -233,8 +256,7 @@ object Parser {
     }
   }
 
-  private def constantUnary(tokens: LazyList[Token]): Option[ParseResult] = {
-
+  private def constantUnary(tokens: LazyList[Token]): Option[ParseResult[ConstantAst[_]]] = {
     tokens match {
       case (token: TypedToken[_]) #:: _ =>
         Some(ParseResult(
@@ -245,8 +267,7 @@ object Parser {
     }
   }
 
-  def parseClosure(tokens: LazyList[Token]): ParseResult = {
-
+  def parseClosure(tokens: LazyList[Token]): ParseResult[ClosureAst] = {
     var rest = trimExactToken(tokens, CharToken('{')).get
     val opsParsed = parseOps(rest)
     rest = opsParsed.rest
@@ -254,19 +275,15 @@ object Parser {
     ParseResult(rest, opsParsed.ast)
   }
 
-  private def parseAlternatives(tokens: LazyList[Token], alternatives: Array[LazyList[Token] => Option[ParseResult]]): Option[ParseResult] = {
-    var result: Option[ParseResult] = None
-    var i = 0
-    while (result.isEmpty && i < alternatives.length) {
-      result = alternatives(i)(tokens)
-      if (result.isDefined) {
-
-      }
-      i += 1
-    }
-    if (result.isEmpty) {
-
-    }
+  private def parseAlternatives[T <: SimpleAst](
+    tokens: LazyList[Token],
+    alternatives: Seq[LazyList[Token] => Option[ParseResult[T]]]
+  ): Option[ParseResult[T]] = {
+    var result: Option[ParseResult[T]] = None
+    alternatives.takeWhile(alternative => {
+      result = alternative(tokens)
+      result.isEmpty
+    })
     result
   }
 }

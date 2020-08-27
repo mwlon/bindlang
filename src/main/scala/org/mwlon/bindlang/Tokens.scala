@@ -6,10 +6,11 @@ object Tokens {
     val value: T
   }
 
-  case object Class extends Token
+  case object Bindable extends Token
   case object If extends Token
   case object Else extends Token
   case object While extends Token
+  case object For extends Token
   case class VarOrType(name: String) extends Token
   case class CharToken(char: Char) extends Token
   case class BinaryOp(name: String) extends Token
