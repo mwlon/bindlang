@@ -10,14 +10,16 @@ This project is still very incomplete.
 
 # Some scattered thoughts
 
-For most modern compiled languages, we're basically forcing the user to work in this grid:
+For most modern compiled languages, even when they do have a Just In Time compiler (JIT), we're basically forcing the user to work in this grid:
 
-|| run time | compile time |
-|| --- | --- |
-| data | not used to optimize | usually not used to optimize |
-| logic | maybe partially optimized by JIT | optimized by compiler |
+| environment | category | optimized by compiler? | optimized by JIT? |
+| --- | --- | --- | --- |
+| compile time | logic | **yes** | no |
+| compile time | data | unlikely | maybe eventually |
+| runtime | logic | no | maybe eventually |
+| runtime | data | no | maybe eventually |
 
-Since compile time logic is the only thing well optimized, we often coerce the developer to write a complex class hierarchy to make their code efficient.
+Since compile time logic is the only thing sure to be optimized, we often coerce the developer to write a complex class hierarchy to make their code efficient.
 Let's look at this Scala example (and I love Scala):
 
 ```
@@ -58,10 +60,12 @@ But this brings another challenge - what if we wanted to know that IdentityAdder
 ## Improving on it
 
 Here's what the table will become for bindlang:
-|| run time | compile time |
-|| --- | --- |
-| data | used to optimize if requested | optimized by compiler |
-| logic | used to optimize if requested | optimized by compiler |
+| environment | category | optimized by compiler? | optimized by JIT? |
+| --- | --- | --- | --- |
+| compile time | logic | **yes** | no |
+| compile time | data | **yes** | no |
+| runtime | logic | no | **if you ask** |
+| runtime | data | no | **if you ask** |
 
 Here's (roughly) how I expect the above code will be written in bindlang, once finished:
 
@@ -99,3 +103,5 @@ trait C extends A {
   data = constantData
 }
 ```
+
+And similarly, you will be implement traits by passing in their unimplemented functions as data arguments.
