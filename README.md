@@ -20,6 +20,9 @@ For most modern compiled languages, even when they do have a Just In Time compil
 | runtime | data | no | maybe eventually |
 
 Since compile time logic is the only thing sure to be optimized, we often coerce the developer to write a complex class hierarchy to make their code efficient.
+Yes, we can rely on the JIT a bit, but we have little observability into what the JIT decides to do.
+In programming, I almost never want something to _maybe_ work - I want a guarantee, and I almost always know which parts of the code I need optimized.
+
 Let's look at this Scala example (and I love Scala):
 
 ```
@@ -39,9 +42,9 @@ object BuiltInOps {
 }
 ```
 
-We've written our code with a clear distinction between logic (`x + y`) and data (`y`). 
+We've written our code with a clear distinction between logic (`eval`) and data (`y`). 
 But notice that `identityAdder` could have a more optimized implementation, since adding `0.0` does nothing.
-The JIT might figure this out if we run the function a million times, but it also might not in more complicated cases
+The JIT might figure this out if we run the function a million times, but it also might not in more complicated cases.
 If we plan to use `identityAdder` a lot and want to be certain it has the most efficient implementation, we would have to define yet another class:
 
 ```
@@ -71,11 +74,11 @@ Here's (roughly) how I expect the above code will be written in bindlang, once f
 
 ```
 trait DoubleOp {
-  eval: (x: Double): Double
+  eval: (x: Double) => Double
 }
 
 class Adder(y: Double) {
-  eval = (x: Double): Double {
+  eval = (x: Double) => Double {
     x + y
   }
 }
@@ -104,4 +107,12 @@ trait C extends A {
 }
 ```
 
-And similarly, you will be implement traits by passing in their unimplemented functions as data arguments.
+And similarly, you will be implement traits by passing in their unimplemented functions as data arguments:
+
+```
+trait A {
+  f: (x: InputType) => OutputType
+}
+
+class B(f: (x: InputType) => OutputType) extends A {}
+```
