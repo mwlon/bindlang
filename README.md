@@ -4,7 +4,7 @@ This project is still very incomplete.
 
 * a lot of our modern tools basically do a real-time compilation step; e.g. tensorflow graphs, spark, airflow
 * we should have a language where staged compilation is a simple language feature
-* write arbitrarily compilated logic, bind or logic data to it, and do a quick runtime compilation step to make it an optimized operation
+* write arbitrarily compilated logic, bind data or logic data to it, and do a quick runtime compilation step to make it an optimized operation
 * define your own optimizer rules; e.g., `identityMatrix * otherMatrix = otherMatrix`
 * have less distinction between data and logic
 
@@ -101,7 +101,7 @@ trait A {
   data: MyDataType
 }
 
-trait B(d: MyDataType) extends A {}
+trait B(data: MyDataType) extends A {}
 trait C extends A {
   data = constantData
 }
@@ -115,4 +115,37 @@ trait A {
 }
 
 class B(f: (x: InputType) => OutputType) extends A {}
+```
+
+In my view, there should be no difference between function implementations and data members.
+We've just gotten used to writing function implementations so that they get processed by the compiler and assuming that data members have no effect in compilation, because that's the way our languages make us think.
+
+And in bindlang, optimizer rules will be easy to write.
+I haven't settled on a good syntax yet, since they should be fully determined at "compile time"/global level.
+But it's probably something like this:
+```
+class MatrixFlags(isIdentity: Bool = false)
+
+class Matrix(m: int, n: int, data: Array[Double], flags: MatrixFlags) {
+  matmul = (other: Matrix) => Matrix {
+    for (i, 0, m) {
+      for (j, 0, n) {
+        var s = 0.0
+        for (k, 0, n) {
+          s += //anyway you get the gist
+        }
+      }
+    }
+  } {
+    optrule = (other: Matrix) => (() => Matrix) {
+      if (this.flags.isIdentity) {
+        () => other
+      } else if (other.flags.isIdentity) {
+        () => this
+      } else {
+        () => this.matmul(other)
+      }
+    }
+  }
+}
 ```
